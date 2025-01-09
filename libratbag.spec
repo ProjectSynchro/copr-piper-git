@@ -1,7 +1,7 @@
-%global commit 40880d2979174c46f5342ee8742ac1e70cc8d62c
+%global commit df3c73e95841273908410ed1c563d8ed4ec21edd
 %global shortcommit %(c=%{commit}; echo ${c:0:7})
-%global git_date 20240617T121819Z
-%global tag v0.8.2
+%global git_date 20241028T223603Z
+%global tag v0.18
 %global clean_tag %(echo %{tag} | sed 's/^v//')
 
 Name:           libratbag
