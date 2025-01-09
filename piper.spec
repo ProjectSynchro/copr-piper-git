@@ -7,8 +7,8 @@
 %define debug_package %{nil}
 
 Name:           piper
-Version:        %{clean_tag}^%{git_date}.g%{shortcommit}
-Release:        %autorelease
+Version:        %{clean_tag}
+Release:        1.%{git_date}git%{shortcommit}%{?dist}
 Summary:        GTK application to configure gaming mice
 License:        GPL-2.0-or-later AND LGPL-2.1-or-later
 URL:            https://github.com/libratbag/%{name}
