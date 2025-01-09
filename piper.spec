@@ -28,6 +28,7 @@ BuildRequires: appstream
 BuildRequires: desktop-file-utils
 BuildRequires: gettext-devel
 BuildRequires: git-core
+BuildRequires: gtk-update-icon-cache
 BuildRequires: libappstream-glib
 BuildRequires: libratbag-ratbagd
 BuildRequires: meson
