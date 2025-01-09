@@ -1,3 +1,7 @@
+noarch/
+x86_64/
+aaarch64/
+
 *-build*
 *.log
 
