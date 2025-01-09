@@ -15,7 +15,7 @@ Source0:        %{url}/archive/%{commit}.tar.gz
 # 0.18+ now installs into /usr/sbin, let's revert that
 # for now until sure that's a permanent change
 # https://github.com/libratbag/libratbag/issues/1672
-Patch0001:      0001-Revert-build-install-ratbagd-into-sbindir.patch
+Patch1:      0001-Revert-build-install-ratbagd-into-sbindir.patch
 
 BuildRequires:  git gcc gcc-c++
 BuildRequires:  meson pkgconfig
@@ -60,7 +60,7 @@ developing applications that use liblur.
 
 %prep
 %autosetup -p1 -N -n %{name}-%{commit}
-
+%autopatch -p1
 # hack until rhbz#1409661 gets fixed
 %{!?__global_cxxflags: %define __global_cxxflags %{optflags}}
 
