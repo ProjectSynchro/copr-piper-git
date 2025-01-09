@@ -48,7 +48,7 @@ via ratbagd.
 %autosetup -p1 -N -n %{name}-%{commit}
 
 %build
-%meson -Dpython="%{python3}"
+%meson
 
 %meson_build
 
@@ -67,6 +67,7 @@ desktop-file-validate %{buildroot}%{_datadir}/applications/*.desktop
 %{_bindir}/%{name}
 %{_datadir}/%{name}
 %pycached %{python3_sitelib}/%{name}/*.py
+%pycached %{python3_sitelib}/%{name}/util/*.py
 %{_datadir}/applications/*.desktop
 %{_metainfodir}/*.appdata.xml
 %{_datadir}/icons/hicolor/*/apps/*
