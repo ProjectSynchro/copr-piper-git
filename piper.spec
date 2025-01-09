@@ -6,7 +6,7 @@
 
 %define debug_package %{nil}
 
-Name:           oversteer
+Name:           piper
 Version:        %{clean_tag}^%{git_date}.g%{shortcommit}
 Release:        %autorelease
 Summary:        GTK application to configure gaming mice
@@ -34,7 +34,7 @@ BuildRequires: meson
 
 Requires: gtk3
 Requires: hicolor-icon-theme
-Requires: libratbag-ratbagd >= 0.14
+Requires: libratbag-ratbagd >= 0.18
 Requires: python3-cairo
 Requires: python3-evdev
 Requires: python3-gobject
