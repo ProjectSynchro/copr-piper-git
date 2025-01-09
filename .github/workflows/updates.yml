@@ -12,7 +12,7 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v3
 
-      - name: Get Latest Commit
+      - name: Get Latest Libratbag Commit
         id: get-commit
         run: |
           latest_commit=$(curl -s https://api.github.com/repos/libratbag/libratbag/commits/master | jq -r '.sha')
@@ -22,13 +22,13 @@ jobs:
           echo "git-date=$git_date" >> $GITHUB_OUTPUT
           echo "latest-tag=$latest_tag" >> $GITHUB_OUTPUT
 
-      - name: Get Current Commit
+      - name: Get Current Libratbag Commit
         id: get-current-commit
         run: |
           current_commit=$(grep -oP '(?<=^%global commit ).*' libratbag.spec)
           echo "current-commit=$current_commit" >> $GITHUB_OUTPUT
 
-      - name: Compare Commits
+      - name: Compare Libratbag Commits
         id: compare-commits
         run: |
           if [ "${{ steps.get-commit.outputs.latest-commit }}" != "${{ steps.get-current-commit.outputs.current-commit }}" ]; then
@@ -37,7 +37,7 @@ jobs:
             echo "new-commit='false'" >> $GITHUB_OUTPUT
           fi
 
-      - name: Update Spec File
+      - name: Update Libratbag Spec File
         if: ${{ contains(steps.compare-commits.outputs.new-commit, 'true') }}
         run: |
           sed -i "s/%global commit .*/%global commit ${{ steps.get-commit.outputs.latest-commit }}/g" libratbag.spec
@@ -53,49 +53,43 @@ jobs:
           git commit -m "libratbag.spec: Update commit to ${{ steps.get-commit.outputs.latest-commit }}"
           git push
 
-  update-piper:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v3
-
-      - name: Get Latest Commit
-        id: get-commit
+      - name: Get Latest Piper Commit
+        id: get-commit-piper
         run: |
-          latest_commit=$(curl -s https://api.github.com/repos/ibratbag/piper/commits/master | jq -r '.sha')
-          git_date=$(curl -s https://api.github.com/repos/ibratbag/piper/commits/master | jq -r '.commit.committer.date' | sed 's/[-:]//g')
-          latest_tag=$(curl -s https://api.github.com/repos/ibratbag/piper/tags | jq -r '.[0].name')
+          latest_commit=$(curl -s https://api.github.com/repos/libratbag/piper/commits/master | jq -r '.sha')
+          git_date=$(curl -s https://api.github.com/repos/libratbag/piper/commits/master | jq -r '.commit.committer.date' | sed 's/[-:]//g')
+          latest_tag=$(curl -s https://api.github.com/repos/libratbag/piper/tags | jq -r '.[0].name')
           echo "latest-commit=$latest_commit" >> $GITHUB_OUTPUT
           echo "git-date=$git_date" >> $GITHUB_OUTPUT
           echo "latest-tag=$latest_tag" >> $GITHUB_OUTPUT
 
-      - name: Get Current Commit
-        id: get-current-commit
+      - name: Get Current Piper Commit
+        id: get-current-commit-piper
         run: |
           current_commit=$(grep -oP '(?<=^%global commit ).*' piper.spec)
           echo "current-commit=$current_commit" >> $GITHUB_OUTPUT
 
-      - name: Compare Commits
-        id: compare-commits
+      - name: Compare Piper Commits
+        id: compare-commits-piper
         run: |
-          if [ "${{ steps.get-commit.outputs.latest-commit }}" != "${{ steps.get-current-commit.outputs.current-commit }}" ]; then
+          if [ "${{ steps.get-commit-piper.outputs.latest-commit }}" != "${{ steps.get-current-commit-piper.outputs.current-commit }}" ]; then
             echo "new-commit='true'" >> $GITHUB_OUTPUT
           else
             echo "new-commit='false'" >> $GITHUB_OUTPUT
           fi
 
-      - name: Update Spec File
-        if: ${{ contains(steps.compare-commits.outputs.new-commit, 'true') }}
+      - name: Update Piper Spec File
+        if: ${{ contains(steps.compare-commits-piper.outputs.new-commit, 'true') }}
         run: |
-          sed -i "s/%global commit .*/%global commit ${{ steps.get-commit.outputs.latest-commit }}/g" piper.spec
-          sed -i "s/%global git_date .*/%global git_date ${{ steps.get-commit.outputs.git-date }}/g" piper.spec
-          sed -i "s/%global tag .*/%global tag ${{ steps.get-commit.outputs.latest-tag }}/g" piper.spec
+          sed -i "s/%global commit .*/%global commit ${{ steps.get-commit-piper.outputs.latest-commit }}/g" piper.spec
+          sed -i "s/%global git_date .*/%global git_date ${{ steps.get-commit-piper.outputs.git-date }}/g" piper.spec
+          sed -i "s/%global tag .*/%global tag ${{ steps.get-commit-piper.outputs.latest-tag }}/g" piper.spec
 
       - name: Commit and Push Changes
-        if: ${{ contains(steps.compare-commits.outputs.new-commit, 'true') }}
+        if: ${{ contains(steps.compare-commits-piper.outputs.new-commit, 'true') }}
         run: |
           git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
           git add piper.spec
-          git commit -m "piper.spec: Update commit to ${{ steps.get-commit.outputs.latest-commit }}"
+          git commit -m "piper.spec: Update commit to ${{ steps.get-commit-piper.outputs.latest-commit }}"
           git push
