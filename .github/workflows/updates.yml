@@ -13,7 +13,6 @@ jobs:
         uses: actions/checkout@v3
 
       - name: Define Retry Function
-        id: setup
         run: |
           echo 'retry_curl() {
             local attempt=0
@@ -22,8 +21,9 @@ jobs:
             until response=$(curl -s --fail "$1"); do
               attempt=$((attempt + 1))
               if [ $attempt -ge $max_attempts ]; then
-                echo "Request failed after $attempt attempts."
-                exit 1
+                echo "Request failed after $attempt attempts. Skipping."
+                echo ""
+                return 1
               fi
               echo "Request failed. Retrying in $delay seconds..."
               sleep $delay
@@ -32,12 +32,19 @@ jobs:
             echo "$response"
           }' >> "$GITHUB_ENV"
 
+      ######################
+      # Libratbag Section
+      ######################
+
       - name: Get Latest Libratbag Commit
         id: get-commit
+        continue-on-error: true
         run: |
           source "$GITHUB_ENV"
 
           commit_json=$(retry_curl https://api.github.com/repos/libratbag/libratbag/commits/master)
+          if [ -z "$commit_json" ]; then exit 0; fi
+
           latest_commit=$(echo "$commit_json" | jq -r '.sha')
           git_date=$(echo "$commit_json" | jq -r '.commit.committer.date' | sed 's/[-:]//g')
 
@@ -51,13 +58,14 @@ jobs:
       - name: Get Current Libratbag Commit
         id: get-current-commit
         run: |
-          current_commit=$(grep -oP '(?<=^%global commit ).*' libratbag.spec)
+          current_commit=$(grep -oP '(?<=^%global commit ).*' libratbag.spec || echo "")
           echo "current-commit=$current_commit" >> $GITHUB_OUTPUT
 
       - name: Compare Libratbag Commits
         id: compare-commits
         run: |
-          if [ "${{ steps.get-commit.outputs.latest-commit }}" != "${{ steps.get-current-commit.outputs.current-commit }}" ]; then
+          if [ -n "${{ steps.get-commit.outputs.latest-commit }}" ] && \
+             [ "${{ steps.get-commit.outputs.latest-commit }}" != "${{ steps.get-current-commit.outputs.current-commit }}" ]; then
             echo "new-commit=true" >> $GITHUB_OUTPUT
           else
             echo "new-commit=false" >> $GITHUB_OUTPUT
@@ -77,24 +85,21 @@ jobs:
           git config --local user.name "github-actions[bot]"
           git add libratbag.spec
           git commit -m "libratbag.spec: Update commit to ${{ steps.get-commit.outputs.latest-commit }}"
+          git push || echo "git push failed, skipping."
 
-          attempt=0
-          until git push; do
-            attempt=$((attempt + 1))
-            if [ $attempt -ge 3 ]; then
-              echo "git push failed after 3 attempts"
-              exit 1
-            fi
-            echo "git push failed. Retrying in $((5 * attempt)) seconds..."
-            sleep $((5 * attempt))
-          done
+      ######################
+      # Piper Section
+      ######################
 
       - name: Get Latest Piper Commit
         id: get-commit-piper
+        continue-on-error: true
         run: |
           source "$GITHUB_ENV"
 
           commit_json=$(retry_curl https://api.github.com/repos/libratbag/piper/commits/master)
+          if [ -z "$commit_json" ]; then exit 0; fi
+
           latest_commit=$(echo "$commit_json" | jq -r '.sha')
           git_date=$(echo "$commit_json" | jq -r '.commit.committer.date' | sed 's/[-:]//g')
 
@@ -108,13 +113,14 @@ jobs:
       - name: Get Current Piper Commit
         id: get-current-commit-piper
         run: |
-          current_commit=$(grep -oP '(?<=^%global commit ).*' piper.spec)
+          current_commit=$(grep -oP '(?<=^%global commit ).*' piper.spec || echo "")
           echo "current-commit=$current_commit" >> $GITHUB_OUTPUT
 
       - name: Compare Piper Commits
         id: compare-commits-piper
         run: |
-          if [ "${{ steps.get-commit-piper.outputs.latest-commit }}" != "${{ steps.get-current-commit-piper.outputs.current-commit }}" ]; then
+          if [ -n "${{ steps.get-commit-piper.outputs.latest-commit }}" ] && \
+             [ "${{ steps.get-commit-piper.outputs.latest-commit }}" != "${{ steps.get-current-commit-piper.outputs.current-commit }}" ]; then
             echo "new-commit=true" >> $GITHUB_OUTPUT
           else
             echo "new-commit=false" >> $GITHUB_OUTPUT
@@ -134,14 +140,4 @@ jobs:
           git config --local user.name "github-actions[bot]"
           git add piper.spec
           git commit -m "piper.spec: Update commit to ${{ steps.get-commit-piper.outputs.latest-commit }}"
-
-          attempt=0
-          until git push; do
-            attempt=$((attempt + 1))
-            if [ $attempt -ge 3 ]; then
-              echo "git push failed after 3 attempts"
-              exit 1
-            fi
-            echo "git push failed. Retrying in $((5 * attempt)) seconds..."
-            sleep $((5 * attempt))
-          done
+          git push || echo "git push failed, skipping."
