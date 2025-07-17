@@ -12,26 +12,6 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v3
 
-      - name: Define Retry Function
-        run: |
-          echo 'retry_curl() {
-            local attempt=0
-            local max_attempts=5
-            local delay=2
-            until response=$(curl -s --fail "$1"); do
-              attempt=$((attempt + 1))
-              if [ $attempt -ge $max_attempts ]; then
-                echo "Request failed after $attempt attempts. Skipping."
-                echo ""
-                return 1
-              fi
-              echo "Request failed. Retrying in $delay seconds..."
-              sleep $delay
-              delay=$((delay * 2))
-            done
-            echo "$response"
-          }' >> "$GITHUB_ENV"
-
       ######################
       # Libratbag Section
       ######################
@@ -40,34 +20,54 @@ jobs:
         id: get-commit
         continue-on-error: true
         run: |
-          source "$GITHUB_ENV"
+          max_retries=5
+          attempt=0
+          success=false
 
-          commit_json=$(retry_curl https://api.github.com/repos/libratbag/libratbag/commits/master)
-          if [ -z "$commit_json" ]; then exit 0; fi
+          while [ $attempt -lt $max_retries ]; do
+            echo "Attempt $((attempt+1)) to fetch commit..."
+            response=$(curl -s --fail https://api.github.com/repos/libratbag/libratbag/commits/master) && success=true && break
+            attempt=$((attempt+1))
+            sleep 5
+          done
 
-          latest_commit=$(echo "$commit_json" | jq -r '.sha')
-          git_date=$(echo "$commit_json" | jq -r '.commit.committer.date' | sed 's/[-:]//g')
+          if [ "$success" = true ]; then
+            latest_commit=$(echo "$response" | jq -r '.sha')
+            git_date=$(echo "$response" | jq -r '.commit.committer.date' | sed 's/[-:]//g')
 
-          tags_json=$(retry_curl https://api.github.com/repos/libratbag/libratbag/tags)
-          latest_tag=$(echo "$tags_json" | jq -r '.[0].name')
+            tag_response=$(curl -s --fail https://api.github.com/repos/libratbag/libratbag/tags || echo '[]')
+            latest_tag=$(echo "$tag_response" | jq -r '.[0].name')
 
-          echo "latest-commit=$latest_commit" >> $GITHUB_OUTPUT
-          echo "git-date=$git_date" >> $GITHUB_OUTPUT
-          echo "latest-tag=$latest_tag" >> $GITHUB_OUTPUT
+            echo "latest-commit=$latest_commit" >> $GITHUB_OUTPUT
+            echo "git-date=$git_date" >> $GITHUB_OUTPUT
+            echo "latest-tag=$latest_tag" >> $GITHUB_OUTPUT
+          else
+            echo "Failed to fetch commit after $max_retries attempts."
+            echo "latest-commit=" >> $GITHUB_OUTPUT
+            echo "git-date=" >> $GITHUB_OUTPUT
+            echo "latest-tag=" >> $GITHUB_OUTPUT
+          fi
 
       - name: Get Current Libratbag Commit
         id: get-current-commit
         run: |
-          current_commit=$(grep -oP '(?<=^%global commit ).*' libratbag.spec || echo "")
+          current_commit=$(grep -oP '(?<=^%global commit ).*' libratbag.spec)
           echo "current-commit=$current_commit" >> $GITHUB_OUTPUT
 
       - name: Compare Libratbag Commits
         id: compare-commits
         run: |
-          if [ -n "${{ steps.get-commit.outputs.latest-commit }}" ] && \
-             [ "${{ steps.get-commit.outputs.latest-commit }}" != "${{ steps.get-current-commit.outputs.current-commit }}" ]; then
+          latest="${{ steps.get-commit.outputs.latest-commit }}"
+          current="${{ steps.get-current-commit.outputs.current-commit }}"
+
+          if [ -z "$latest" ]; then
+            echo "No latest commit fetched. Skipping update."
+            echo "new-commit=false" >> $GITHUB_OUTPUT
+          elif [ "$latest" != "$current" ]; then
+            echo "New commit found: $latest"
             echo "new-commit=true" >> $GITHUB_OUTPUT
           else
+            echo "No update required."
             echo "new-commit=false" >> $GITHUB_OUTPUT
           fi
 
@@ -84,7 +84,7 @@ jobs:
           git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
           git add libratbag.spec
-          git commit -m "libratbag.spec: Update commit to ${{ steps.get-commit.outputs.latest-commit }}"
+          git commit -m "[libratbag] Update commit to ${{ steps.get-commit.outputs.latest-commit }}"
           git push || echo "git push failed, skipping."
 
       ######################
@@ -95,34 +95,54 @@ jobs:
         id: get-commit-piper
         continue-on-error: true
         run: |
-          source "$GITHUB_ENV"
+          max_retries=5
+          attempt=0
+          success=false
 
-          commit_json=$(retry_curl https://api.github.com/repos/libratbag/piper/commits/master)
-          if [ -z "$commit_json" ]; then exit 0; fi
+          while [ $attempt -lt $max_retries ]; do
+            echo "Attempt $((attempt+1)) to fetch commit..."
+            response=$(curl -s --fail https://api.github.com/repos/libratbag/piper/commits/master) && success=true && break
+            attempt=$((attempt+1))
+            sleep 5
+          done
 
-          latest_commit=$(echo "$commit_json" | jq -r '.sha')
-          git_date=$(echo "$commit_json" | jq -r '.commit.committer.date' | sed 's/[-:]//g')
+          if [ "$success" = true ]; then
+            latest_commit=$(echo "$response" | jq -r '.sha')
+            git_date=$(echo "$response" | jq -r '.commit.committer.date' | sed 's/[-:]//g')
 
-          tags_json=$(retry_curl https://api.github.com/repos/libratbag/piper/tags)
-          latest_tag=$(echo "$tags_json" | jq -r '.[0].name')
+            tag_response=$(curl -s --fail https://api.github.com/repos/libratbag/piper/tags || echo '[]')
+            latest_tag=$(echo "$tag_response" | jq -r '.[0].name')
 
-          echo "latest-commit=$latest_commit" >> $GITHUB_OUTPUT
-          echo "git-date=$git_date" >> $GITHUB_OUTPUT
-          echo "latest-tag=$latest_tag" >> $GITHUB_OUTPUT
+            echo "latest-commit=$latest_commit" >> $GITHUB_OUTPUT
+            echo "git-date=$git_date" >> $GITHUB_OUTPUT
+            echo "latest-tag=$latest_tag" >> $GITHUB_OUTPUT
+          else
+            echo "Failed to fetch commit after $max_retries attempts."
+            echo "latest-commit=" >> $GITHUB_OUTPUT
+            echo "git-date=" >> $GITHUB_OUTPUT
+            echo "latest-tag=" >> $GITHUB_OUTPUT
+          fi
 
       - name: Get Current Piper Commit
         id: get-current-commit-piper
         run: |
-          current_commit=$(grep -oP '(?<=^%global commit ).*' piper.spec || echo "")
+          current_commit=$(grep -oP '(?<=^%global commit ).*' piper.spec)
           echo "current-commit=$current_commit" >> $GITHUB_OUTPUT
 
       - name: Compare Piper Commits
         id: compare-commits-piper
         run: |
-          if [ -n "${{ steps.get-commit-piper.outputs.latest-commit }}" ] && \
-             [ "${{ steps.get-commit-piper.outputs.latest-commit }}" != "${{ steps.get-current-commit-piper.outputs.current-commit }}" ]; then
+          latest="${{ steps.get-commit-piper.outputs.latest-commit }}"
+          current="${{ steps.get-current-commit-piper.outputs.current-commit }}"
+
+          if [ -z "$latest" ]; then
+            echo "No latest commit fetched. Skipping update."
+            echo "new-commit=false" >> $GITHUB_OUTPUT
+          elif [ "$latest" != "$current" ]; then
+            echo "New commit found: $latest"
             echo "new-commit=true" >> $GITHUB_OUTPUT
           else
+            echo "No update required."
             echo "new-commit=false" >> $GITHUB_OUTPUT
           fi
 
@@ -139,5 +159,5 @@ jobs:
           git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
           git add piper.spec
-          git commit -m "piper.spec: Update commit to ${{ steps.get-commit-piper.outputs.latest-commit }}"
+          git commit -m "[piper] Update commit to ${{ steps.get-commit-piper.outputs.latest-commit }}"
           git push || echo "git push failed, skipping."
