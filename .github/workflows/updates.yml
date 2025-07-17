@@ -12,124 +12,136 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v3
 
-      # --- Libratbag ---
+      - name: Define Retry Function
+        id: setup
+        run: |
+          echo 'retry_curl() {
+            local attempt=0
+            local max_attempts=5
+            local delay=2
+            until response=$(curl -s --fail "$1"); do
+              attempt=$((attempt + 1))
+              if [ $attempt -ge $max_attempts ]; then
+                echo "Request failed after $attempt attempts."
+                exit 1
+              fi
+              echo "Request failed. Retrying in $delay seconds..."
+              sleep $delay
+              delay=$((delay * 2))
+            done
+            echo "$response"
+          }' >> "$GITHUB_ENV"
 
       - name: Get Latest Libratbag Commit
-        id: get-commit-libratbag
+        id: get-commit
         run: |
-          set -euo pipefail
-          API="https://api.github.com/repos/libratbag/libratbag"
-          latest_commit=$(curl --fail --retry 3 -s "$API/commits/master" | jq -r '.sha')
-          git_date=$(curl --fail --retry 3 -s "$API/commits/master" | jq -r '.commit.committer.date' | sed 's/[-:]//g')
-          latest_tag=$(curl --fail --retry 3 -s "$API/tags" | jq -r '.[0].name')
+          source "$GITHUB_ENV"
 
-          if [[ -z "$latest_commit" || -z "$git_date" || -z "$latest_tag" ]]; then
-            echo "Failed to fetch required libratbag data"
-            exit 1
-          fi
+          commit_json=$(retry_curl https://api.github.com/repos/libratbag/libratbag/commits/master)
+          latest_commit=$(echo "$commit_json" | jq -r '.sha')
+          git_date=$(echo "$commit_json" | jq -r '.commit.committer.date' | sed 's/[-:]//g')
 
-          echo "latest-commit=$latest_commit" >> "$GITHUB_OUTPUT"
-          echo "git-date=$git_date" >> "$GITHUB_OUTPUT"
-          echo "latest-tag=$latest_tag" >> "$GITHUB_OUTPUT"
+          tags_json=$(retry_curl https://api.github.com/repos/libratbag/libratbag/tags)
+          latest_tag=$(echo "$tags_json" | jq -r '.[0].name')
+
+          echo "latest-commit=$latest_commit" >> $GITHUB_OUTPUT
+          echo "git-date=$git_date" >> $GITHUB_OUTPUT
+          echo "latest-tag=$latest_tag" >> $GITHUB_OUTPUT
 
       - name: Get Current Libratbag Commit
-        id: get-current-commit-libratbag
+        id: get-current-commit
         run: |
-          set -euo pipefail
-          current_commit=$(grep -oP '(?<=^%global commit ).*' libratbag.spec || echo "")
-          if [[ -z "$current_commit" ]]; then
-            echo "Could not find current libratbag commit in spec"
-            exit 1
-          fi
-          echo "current-commit=$current_commit" >> "$GITHUB_OUTPUT"
+          current_commit=$(grep -oP '(?<=^%global commit ).*' libratbag.spec)
+          echo "current-commit=$current_commit" >> $GITHUB_OUTPUT
 
       - name: Compare Libratbag Commits
-        id: compare-commits-libratbag
+        id: compare-commits
         run: |
-          set -euo pipefail
-          latest="${{ steps.get-commit-libratbag.outputs.latest-commit }}"
-          current="${{ steps.get-current-commit-libratbag.outputs.current-commit }}"
-          if [[ "$latest" != "$current" ]]; then
-            echo "new-commit=true" >> "$GITHUB_OUTPUT"
+          if [ "${{ steps.get-commit.outputs.latest-commit }}" != "${{ steps.get-current-commit.outputs.current-commit }}" ]; then
+            echo "new-commit=true" >> $GITHUB_OUTPUT
           else
-            echo "new-commit=false" >> "$GITHUB_OUTPUT"
+            echo "new-commit=false" >> $GITHUB_OUTPUT
           fi
 
       - name: Update Libratbag Spec File
-        if: ${{ steps.compare-commits-libratbag.outputs.new-commit == 'true' }}
+        if: ${{ steps.compare-commits.outputs.new-commit == 'true' }}
         run: |
-          set -euo pipefail
-          sed -i "s|^%global commit .*|%global commit ${{ steps.get-commit-libratbag.outputs.latest-commit }}|" libratbag.spec
-          sed -i "s|^%global git_date .*|%global git_date ${{ steps.get-commit-libratbag.outputs.git-date }}|" libratbag.spec
-          sed -i "s|^%global tag .*|%global tag ${{ steps.get-commit-libratbag.outputs.latest-tag }}|" libratbag.spec
+          sed -i "s/%global commit .*/%global commit ${{ steps.get-commit.outputs.latest-commit }}/g" libratbag.spec
+          sed -i "s/%global git_date .*/%global git_date ${{ steps.get-commit.outputs.git-date }}/g" libratbag.spec
+          sed -i "s/%global tag .*/%global tag ${{ steps.get-commit.outputs.latest-tag }}/g" libratbag.spec
 
-      - name: Commit and Push Libratbag Changes
-        if: ${{ steps.compare-commits-libratbag.outputs.new-commit == 'true' }}
+      - name: Commit and Push Changes (Libratbag)
+        if: ${{ steps.compare-commits.outputs.new-commit == 'true' }}
         run: |
-          set -euo pipefail
           git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
           git add libratbag.spec
-          git commit -m "libratbag.spec: Update commit to ${{ steps.get-commit-libratbag.outputs.latest-commit }}"
-          git push
+          git commit -m "libratbag.spec: Update commit to ${{ steps.get-commit.outputs.latest-commit }}"
 
-      # --- Piper ---
+          attempt=0
+          until git push; do
+            attempt=$((attempt + 1))
+            if [ $attempt -ge 3 ]; then
+              echo "git push failed after 3 attempts"
+              exit 1
+            fi
+            echo "git push failed. Retrying in $((5 * attempt)) seconds..."
+            sleep $((5 * attempt))
+          done
 
       - name: Get Latest Piper Commit
         id: get-commit-piper
         run: |
-          set -euo pipefail
-          API="https://api.github.com/repos/libratbag/piper"
-          latest_commit=$(curl --fail --retry 3 -s "$API/commits/master" | jq -r '.sha')
-          git_date=$(curl --fail --retry 3 -s "$API/commits/master" | jq -r '.commit.committer.date' | sed 's/[-:]//g')
-          latest_tag=$(curl --fail --retry 3 -s "$API/tags" | jq -r '.[0].name')
+          source "$GITHUB_ENV"
 
-          if [[ -z "$latest_commit" || -z "$git_date" || -z "$latest_tag" ]]; then
-            echo "Failed to fetch required piper data"
-            exit 1
-          fi
+          commit_json=$(retry_curl https://api.github.com/repos/libratbag/piper/commits/master)
+          latest_commit=$(echo "$commit_json" | jq -r '.sha')
+          git_date=$(echo "$commit_json" | jq -r '.commit.committer.date' | sed 's/[-:]//g')
 
-          echo "latest-commit=$latest_commit" >> "$GITHUB_OUTPUT"
-          echo "git-date=$git_date" >> "$GITHUB_OUTPUT"
-          echo "latest-tag=$latest_tag" >> "$GITHUB_OUTPUT"
+          tags_json=$(retry_curl https://api.github.com/repos/libratbag/piper/tags)
+          latest_tag=$(echo "$tags_json" | jq -r '.[0].name')
+
+          echo "latest-commit=$latest_commit" >> $GITHUB_OUTPUT
+          echo "git-date=$git_date" >> $GITHUB_OUTPUT
+          echo "latest-tag=$latest_tag" >> $GITHUB_OUTPUT
 
       - name: Get Current Piper Commit
         id: get-current-commit-piper
         run: |
-          set -euo pipefail
-          current_commit=$(grep -oP '(?<=^%global commit ).*' piper.spec || echo "")
-          if [[ -z "$current_commit" ]]; then
-            echo "Could not find current piper commit in spec"
-            exit 1
-          fi
-          echo "current-commit=$current_commit" >> "$GITHUB_OUTPUT"
+          current_commit=$(grep -oP '(?<=^%global commit ).*' piper.spec)
+          echo "current-commit=$current_commit" >> $GITHUB_OUTPUT
 
       - name: Compare Piper Commits
         id: compare-commits-piper
         run: |
-          set -euo pipefail
-          latest="${{ steps.get-commit-piper.outputs.latest-commit }}"
-          current="${{ steps.get-current-commit-piper.outputs.current-commit }}"
-          if [[ "$latest" != "$current" ]]; then
-            echo "new-commit=true" >> "$GITHUB_OUTPUT"
+          if [ "${{ steps.get-commit-piper.outputs.latest-commit }}" != "${{ steps.get-current-commit-piper.outputs.current-commit }}" ]; then
+            echo "new-commit=true" >> $GITHUB_OUTPUT
           else
-            echo "new-commit=false" >> "$GITHUB_OUTPUT"
+            echo "new-commit=false" >> $GITHUB_OUTPUT
           fi
 
       - name: Update Piper Spec File
         if: ${{ steps.compare-commits-piper.outputs.new-commit == 'true' }}
         run: |
-          set -euo pipefail
-          sed -i "s|^%global commit .*|%global commit ${{ steps.get-commit-piper.outputs.latest-commit }}|" piper.spec
-          sed -i "s|^%global git_date .*|%global git_date ${{ steps.get-commit-piper.outputs.git-date }}|" piper.spec
-          sed -i "s|^%global tag .*|%global tag ${{ steps.get-commit-piper.outputs.latest-tag }}|" piper.spec
+          sed -i "s/%global commit .*/%global commit ${{ steps.get-commit-piper.outputs.latest-commit }}/g" piper.spec
+          sed -i "s/%global git_date .*/%global git_date ${{ steps.get-commit-piper.outputs.git-date }}/g" piper.spec
+          sed -i "s/%global tag .*/%global tag ${{ steps.get-commit-piper.outputs.latest-tag }}/g" piper.spec
 
-      - name: Commit and Push Piper Changes
+      - name: Commit and Push Changes (Piper)
         if: ${{ steps.compare-commits-piper.outputs.new-commit == 'true' }}
         run: |
-          set -euo pipefail
           git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
           git add piper.spec
           git commit -m "piper.spec: Update commit to ${{ steps.get-commit-piper.outputs.latest-commit }}"
-          git push
+
+          attempt=0
+          until git push; do
+            attempt=$((attempt + 1))
+            if [ $attempt -ge 3 ]; then
+              echo "git push failed after 3 attempts"
+              exit 1
+            fi
+            echo "git push failed. Retrying in $((5 * attempt)) seconds..."
+            sleep $((5 * attempt))
+          done
